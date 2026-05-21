@@ -62,6 +62,15 @@ class Garden {
     );
   }
 
+  double get profitMilestoneMultiplier {
+    return MilestoneConfig.cumulativeMultiplier(
+      milestoneKey,
+      _levelForMilestones,
+      includeGlobal: false,
+      types: {'Profit'},
+    );
+  }
+
   BigInt get currentProgressMicros => _currentProgressMicros;
 
   double get currentProgress =>
@@ -72,16 +81,22 @@ class Garden {
     return BigInt.from(max(1, durationMicros));
   }
 
-  BigInt get _scaledRevenuePerCompletion {
+  BigInt _scaledRevenuePerCompletion(double globalProfitMultiplier) {
     if (level == BigInt.zero) return BigInt.zero;
     final scaledValue =
-        baseProduction * level.toDouble() * storeMultiplier * _revenueScale;
+        baseProduction *
+        level.toDouble() *
+        storeMultiplier *
+        profitMilestoneMultiplier *
+        globalProfitMultiplier *
+        _revenueScale;
     return BigInt.from(scaledValue.round());
   }
 
   BigInt _calculateRevenueForElapsed(
     BigInt elapsedMicros,
     int globalSpeedMultiplier, {
+    required double globalProfitMultiplier,
     required bool mutateProgress,
   }) {
     if (level == BigInt.zero) return BigInt.zero;
@@ -105,23 +120,26 @@ class Garden {
       return BigInt.zero;
     }
 
-    return (_scaledRevenuePerCompletion * completions) ~/
+    return (_scaledRevenuePerCompletion(globalProfitMultiplier) * completions) ~/
         BigInt.from(_revenueScale);
   }
 
-  // Backwards-compatible per-second production estimate (ignores global multiplier)
+  // Backwards-compatible per-second production estimate.
   BigInt get currentProduction {
-    return estimateRevenuePerSecond(1);
+    return estimateRevenuePerSecond(1, 1.0);
   }
 
-  BigInt estimateRevenuePerSecond(int globalSpeedMultiplier) {
+  BigInt estimateRevenuePerSecond(
+    int globalSpeedMultiplier,
+    double globalProfitMultiplier,
+  ) {
     if (level == BigInt.zero) return BigInt.zero;
 
     final safeGlobalMultiplier = max(1, globalSpeedMultiplier);
     final completionsPerSecondScaled = BigInt.from(
       individualSpeedMultiplier * safeGlobalMultiplier * _microsPerSecond,
     );
-    return (_scaledRevenuePerCompletion * completionsPerSecondScaled) ~/
+    return (_scaledRevenuePerCompletion(globalProfitMultiplier) * completionsPerSecondScaled) ~/
         _baseDurationMicros ~/
         BigInt.from(_revenueScale);
   }
@@ -142,10 +160,15 @@ class Garden {
   }
 
   // Tick: returns generated gold amount for this elapsed time slice
-  BigInt calculateRevenue(BigInt elapsedMicros, int globalSpeedMultiplier) {
+  BigInt calculateRevenue(
+    BigInt elapsedMicros,
+    int globalSpeedMultiplier,
+    double globalProfitMultiplier,
+  ) {
     return _calculateRevenueForElapsed(
       elapsedMicros,
       globalSpeedMultiplier,
+      globalProfitMultiplier: globalProfitMultiplier,
       mutateProgress: true,
     );
   }

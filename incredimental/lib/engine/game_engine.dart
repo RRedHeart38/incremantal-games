@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/milestone_config.dart';
 import '../models/garden.dart';
 import '../models/upgrade.dart';
 import '../services/upgrade_service.dart';
@@ -123,9 +124,11 @@ class GameEngine extends ChangeNotifier {
 
     _gameTimer = Timer.periodic(const Duration(milliseconds: 100), (t) {
       final int globalMultiplier = globalSpeedMultiplier;
+      final double globalProfitMultiplier = this.globalProfitMultiplier;
       final BigInt generated = calculateRevenue(
         _tickIntervalMicros,
         globalMultiplier,
+        globalProfitMultiplier,
       );
 
       if (generated > BigInt.zero) {
@@ -142,11 +145,19 @@ class GameEngine extends ChangeNotifier {
     _loadGame(); // Oyun verilerini yükle
   }
 
-  BigInt calculateRevenue(BigInt elapsedMicros, int globalMultiplier) {
+  BigInt calculateRevenue(
+    BigInt elapsedMicros,
+    int globalMultiplier,
+    double globalProfitMultiplier,
+  ) {
     BigInt generated = BigInt.zero;
 
     for (final garden in gardens) {
-      generated += garden.calculateRevenue(elapsedMicros, globalMultiplier);
+      generated += garden.calculateRevenue(
+        elapsedMicros,
+        globalMultiplier,
+        globalProfitMultiplier,
+      );
     }
 
     return generated;
@@ -161,7 +172,11 @@ class GameEngine extends ChangeNotifier {
       }
     }
 
-    final generated = calculateRevenue(_thirtyMinutesMicros, globalSpeedMultiplier);
+    final generated = calculateRevenue(
+      _thirtyMinutesMicros,
+      globalSpeedMultiplier,
+      globalProfitMultiplier,
+    );
 
     for (final garden in temporarilyActivatedGardens) {
       garden.isRunning = false;
@@ -311,10 +326,14 @@ class GameEngine extends ChangeNotifier {
   // Backwards-compatible total production (includes global multiplier)
   BigInt get totalProduction {
     final int globalMultiplier = globalSpeedMultiplier;
+    final double globalProfitMultiplier = this.globalProfitMultiplier;
     BigInt sum = BigInt.zero;
 
     for (final g in gardens) {
-      sum += g.estimateRevenuePerSecond(globalMultiplier);
+      sum += g.estimateRevenuePerSecond(
+        globalMultiplier,
+        globalProfitMultiplier,
+      );
     }
 
     return sum;
@@ -330,21 +349,35 @@ class GameEngine extends ChangeNotifier {
   // Küresel sinerji: en düşük seviyeli bahçenin geçtiği milestone'lara göre 2^n
   int get globalSpeedMultiplier {
     if (gardens.isEmpty) return 1;
-    // Find minimum level among gardens
-    BigInt minLevel = gardens
-        .map((g) => g.level)
-        .reduce((a, b) => a < b ? a : b);
-    if (minLevel == BigInt.zero) return 1;
-    List<int> milestones = [10, 25, 50, 100, 250, 500, 1000];
-    int passed = 0;
-    for (final m in milestones) {
-      if (minLevel >= BigInt.from(m)) {
-        passed++;
-      } else {
-        break;
-      }
-    }
-    return pow(2, passed).toInt();
+    final minLevel = _minimumGardenLevelForMilestones();
+    return MilestoneConfig.cumulativeMultiplier(
+      'all',
+      minLevel,
+      includeGlobal: false,
+      types: {'Speed'},
+    ).round();
+  }
+
+  double get globalProfitMultiplier {
+    if (gardens.isEmpty) return 1.0;
+    final minLevel = _minimumGardenLevelForMilestones();
+    return MilestoneConfig.cumulativeMultiplier(
+      'all',
+      minLevel,
+      includeGlobal: false,
+      types: {'Profit'},
+    );
+  }
+
+  int _minimumGardenLevelForMilestones() {
+    if (gardens.isEmpty) return 0;
+
+    final BigInt minLevel = gardens
+        .map((garden) => garden.level)
+        .reduce((left, right) => left < right ? left : right);
+
+    final maxInt = BigInt.from(2147483647);
+    return minLevel > maxInt ? 2147483647 : minLevel.toInt();
   }
 
   void buyAutomation(int index) {

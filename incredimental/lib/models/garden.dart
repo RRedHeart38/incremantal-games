@@ -74,7 +74,9 @@ class Garden {
   BigInt get currentProgressMicros => _currentProgressMicros;
 
   double get currentProgress =>
-      _currentProgressMicros.toDouble() / _microsPerSecond;
+      _baseDurationMicros == BigInt.zero
+        ? 0.0
+        : _currentProgressMicros.toDouble() / _baseDurationMicros.toDouble();
 
   BigInt get _baseDurationMicros {
     final durationMicros = (baseDuration * _microsPerSecond).round();

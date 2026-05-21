@@ -21,16 +21,54 @@ class AnaEkran extends StatelessWidget {
           title: const Text("Botanical Tycoon: Pure Idle", style: TextStyle(fontWeight: FontWeight.bold)),
           centerTitle: true,
           actions: [
+            if (engine.pendingAngels > BigInt.zero)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                child: TextButton(
+                  onPressed: () async {
+                    await engine.claimAngelsAndRestart();
+                    if (!context.mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Oyun sıfırlandı, melekler kazanıldı!'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.amberAccent,
+                    backgroundColor: Colors.amberAccent.withValues(alpha: 0.12),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                  child: Text('Sıfırla (+${formatCompactBigInt(engine.pendingAngels)} Melek)'),
+                ),
+              ),
             IconButton(
-              tooltip: '30 dk ileri sar',
+              tooltip: '10 gün ileri sar',
               icon: const Icon(Icons.fast_forward_rounded),
               onPressed: () async {
-                final generated = await engine.fastForwardThirtyMinutes();
+                final generated = await engine.fastForwardTenDays();
                 if (!context.mounted) return;
 
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('30 dakika ileri sarıldı. +$generated üretildi.'),
+                    content: Text('10 gün ileri sarıldı. +$generated üretildi.'),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              tooltip: '10 yıl ileri sar',
+              icon: const Icon(Icons.schedule_send_rounded),
+              onPressed: () async {
+                final generated = await engine.fastForwardTenYears();
+                if (!context.mounted) return;
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('10 yıl ileri sarıldı. +$generated üretildi.'),
                     duration: const Duration(seconds: 2),
                   ),
                 );

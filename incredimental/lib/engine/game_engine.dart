@@ -12,11 +12,15 @@ class GameEngine extends ChangeNotifier {
   static const int _tickIntervalMs = 100; // 100ms per tick
   static final BigInt _tickIntervalMicros = BigInt.from(_tickIntervalMs * 1000);
   static final BigInt _thirtyMinutesMicros = BigInt.from(30 * 60 * 1000000);
+  static final BigInt _tenDaysMicros = BigInt.from(10 * 24 * 60 * 60 * 1000000);
+  static final BigInt _tenYearsMicros = BigInt.from(10 * 365 * 24 * 60 * 60 * 1000000);
   static final BigInt _initialMoney = BigInt.from(15);
   static const String _saveKey = 'gameEngine_save';
   static const int _autoSaveIntervalMs = 5000; // 5 saniye throttle
 
   BigInt currentMoney = _initialMoney;
+  BigInt lifetimeEarnings = BigInt.zero;
+  BigInt claimedAngels = BigInt.zero;
   late final Timer _gameTimer;
   Timer? _autoSaveTimer; // Throttled save timer
   List<Upgrade> upgrades = [];
@@ -133,6 +137,7 @@ class GameEngine extends ChangeNotifier {
 
       if (generated > BigInt.zero) {
         currentMoney += generated;
+        lifetimeEarnings += generated;
       }
 
       notifyListeners();
@@ -163,6 +168,31 @@ class GameEngine extends ChangeNotifier {
     return generated;
   }
 
+  BigInt get pendingAngels {
+    BigInt threshold = BigInt.parse('1000000000000000');
+    if (lifetimeEarnings < threshold) return BigInt.zero;
+
+    BigInt dividedEarnings = lifetimeEarnings ~/ threshold;
+    BigInt totalAngelsEarned = BigInt.from(150) * sqrtBigInt(dividedEarnings);
+
+    BigInt pending = totalAngelsEarned - claimedAngels;
+    return pending > BigInt.zero ? pending : BigInt.zero;
+  }
+
+  Future<void> claimAngelsAndRestart() async {
+    final angelsToClaim = pendingAngels;
+    if (angelsToClaim > BigInt.zero) {
+      claimedAngels += angelsToClaim;
+    }
+
+    currentMoney = _initialMoney;
+    purchasedUpgradeIds.clear();
+    gardens = _createDefaultGardens();
+
+    notifyListeners();
+    await _immediateAutoSave();
+  }
+
   Future<BigInt> fastForwardThirtyMinutes() async {
     final temporarilyActivatedGardens = <Garden>[];
     for (final garden in gardens) {
@@ -184,6 +214,65 @@ class GameEngine extends ChangeNotifier {
 
     if (generated > BigInt.zero) {
       currentMoney += generated;
+      lifetimeEarnings += generated;
+    }
+
+    notifyListeners();
+    await _immediateAutoSave();
+    return generated;
+  }
+
+  Future<BigInt> fastForwardTenDays() async {
+    final temporarilyActivatedGardens = <Garden>[];
+    for (final garden in gardens) {
+      if (garden.level > BigInt.zero && !garden.isRunning && !garden.isAutomated) {
+        garden.isRunning = true;
+        temporarilyActivatedGardens.add(garden);
+      }
+    }
+
+    final generated = calculateRevenue(
+      _tenDaysMicros,
+      globalSpeedMultiplier,
+      globalProfitMultiplier,
+    );
+
+    for (final garden in temporarilyActivatedGardens) {
+      garden.isRunning = false;
+    }
+
+    if (generated > BigInt.zero) {
+      currentMoney += generated;
+      lifetimeEarnings += generated;
+    }
+
+    notifyListeners();
+    await _immediateAutoSave();
+    return generated;
+  }
+
+  Future<BigInt> fastForwardTenYears() async {
+    final temporarilyActivatedGardens = <Garden>[];
+    for (final garden in gardens) {
+      if (garden.level > BigInt.zero && !garden.isRunning && !garden.isAutomated) {
+        garden.isRunning = true;
+        temporarilyActivatedGardens.add(garden);
+      }
+    }
+
+    final generated = calculateRevenue(
+      _tenYearsMicros,
+      globalSpeedMultiplier,
+      globalProfitMultiplier,
+    );
+
+    for (final garden in temporarilyActivatedGardens) {
+      garden.isRunning = false;
+    }
+
+    if (generated > BigInt.zero) {
+      currentMoney += generated;
+      lifetimeEarnings += generated;
     }
 
     notifyListeners();
@@ -253,6 +342,9 @@ class GameEngine extends ChangeNotifier {
 
         // currentMoney yükle
         currentMoney = BigInt.parse(json['currentMoney'] as String? ?? '15');
+        lifetimeEarnings =
+          BigInt.parse(json['lifetimeEarnings'] as String? ?? '0');
+        claimedAngels = BigInt.parse(json['claimedAngels'] as String? ?? '0');
 
         // purchasedUpgradeIds yükle
         final upgradeIds =
@@ -281,6 +373,8 @@ class GameEngine extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final json = {
         'currentMoney': currentMoney.toString(),
+        'lifetimeEarnings': lifetimeEarnings.toString(),
+        'claimedAngels': claimedAngels.toString(),
         'purchasedUpgradeIds': purchasedUpgradeIds.toList(),
         'gardens': gardens.map((g) => g.toJson()).toList(),
       };
@@ -409,4 +503,15 @@ class GameEngine extends ChangeNotifier {
     _immediateAutoSave(); // Son kaydı yap
     super.dispose();
   }
+}
+
+BigInt sqrtBigInt(BigInt n) {
+  if (n == BigInt.zero) return BigInt.zero;
+  BigInt x = n;
+  BigInt y = (x + BigInt.one) >> 1;
+  while (y < x) {
+    x = y;
+    y = ((n ~/ x) + x) >> 1;
+  }
+  return x;
 }
